@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Debug APK
 
 on:
   workflow_dispatch:
@@ -28,16 +28,6 @@ jobs:
           yes | "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$HOME/android-sdk" --licenses > /dev/null
           "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$HOME/android-sdk" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Create Gradle wrapper if missing
-        run: |
-          if [ ! -f ./gradlew ]; then
-            gradle wrapper --gradle-version 8.7
-          fi
-          chmod +x ./gradlew
-
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
         env:
@@ -49,5 +39,4 @@ jobs:
         with:
           name: app-debug-apk
           path: app/build/outputs/apk/debug/*.apk
-
           
