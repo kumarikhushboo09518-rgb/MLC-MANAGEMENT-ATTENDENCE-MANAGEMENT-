@@ -1,0 +1,257 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Reusable hardened helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidDateKey(val) {
+      return val is string && val.size() == 10 && val.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidUserAccount(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.username is string && data.username.size() >= 2 && data.username.size() <= 50 &&
+             data.passwordHash is string && data.passwordHash.size() >= 16 && data.passwordHash.size() <= 200 &&
+             data.passwordSalt is string && data.passwordSalt.size() >= 8 && data.passwordSalt.size() <= 100 &&
+             data.recoveryHash is string && data.recoveryHash.size() >= 16 && data.recoveryHash.size() <= 200 &&
+             data.recoverySalt is string && data.recoverySalt.size() >= 8 && data.recoverySalt.size() <= 100 &&
+             data.rememberMe is bool &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidMlcProfile(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.teacherName is string && data.teacherName.size() >= 1 && data.teacherName.size() <= 100 &&
+             data.mlcName is string && data.mlcName.size() >= 1 && data.mlcName.size() <= 120 &&
+             data.mlcLocation is string && data.mlcLocation.size() >= 1 && data.mlcLocation.size() <= 160 &&
+             (!('logoData' in data) || (data.logoData is string && data.logoData.size() <= 60000)) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidStudent(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.studentCode is string && data.studentCode.size() >= 2 && data.studentCode.size() <= 32 &&
+             data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 100 &&
+             (!('parentName' in data) || (data.parentName is string && data.parentName.size() <= 100)) &&
+             (!('contactNumber' in data) || (data.contactNumber is string && data.contactNumber.size() <= 25)) &&
+             data.active is bool &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidAttendanceRecord(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             isValidId(data.studentId) &&
+             data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 100 &&
+             isValidDateKey(data.dateKey) &&
+             data.status in ['PRESENT', 'ABSENT'] &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidFineRecord(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             isValidId(data.studentId) &&
+             data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 100 &&
+             isValidDateKey(data.attendanceDate) &&
+             data.amount is int && data.amount >= 0 && data.amount <= 10000 &&
+             data.paidAmount is int && data.paidAmount >= 0 && data.paidAmount <= 10000 &&
+             data.status in ['UNPAID', 'PARTIAL', 'PAID', 'REVERSED', 'CREDIT_ADJUSTED'] &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidPaymentRecord(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             isValidId(data.studentId) &&
+             data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 100 &&
+             data.amountPaid is int && data.amountPaid >= 1 && data.amountPaid <= 100000 &&
+             data.remainingAfter is int && data.remainingAfter >= 0 && data.remainingAfter <= 100000 &&
+             isValidDateKey(data.paymentDateKey) &&
+             data.paymentTimeText is string && data.paymentTimeText.size() >= 1 && data.paymentTimeText.size() <= 30 &&
+             (!('note' in data) || (data.note is string && data.note.size() <= 200)) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidAppSettings(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.languageCode in ['en', 'hi'] &&
+             data.defaultFineAmount is int && data.defaultFineAmount >= 1 && data.defaultFineAmount <= 1000 &&
+             data.sundayHolidayEnabled is bool &&
+             data.notificationsEnabled is bool &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    // 1. Users Collection
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if isOwner(userId);
+
+      allow create: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       incoming().keys().hasAll(['userId', 'username', 'passwordHash', 'passwordSalt', 'recoveryHash', 'recoverySalt', 'rememberMe', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'username', 'passwordHash', 'passwordSalt', 'recoveryHash', 'recoverySalt', 'rememberMe', 'createdAt', 'updatedAt']) &&
+                       isValidUserAccount(incoming(), userId);
+
+      allow update: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       isValidUserAccount(incoming(), userId) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['username', 'passwordHash', 'passwordSalt', 'recoveryHash', 'recoverySalt', 'rememberMe', 'updatedAt']);
+
+      allow delete: if false;
+
+      // 2. MLC Profiles Subcollection
+      match /mlcProfiles/{profileId} {
+        allow get: if isOwner(userId) && isValidId(profileId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(profileId) &&
+                         incoming().keys().hasAll(['userId', 'teacherName', 'mlcName', 'mlcLocation', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'teacherName', 'mlcName', 'mlcLocation', 'logoData', 'createdAt', 'updatedAt']) &&
+                         isValidMlcProfile(incoming(), userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidId(profileId) &&
+                         isValidMlcProfile(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['teacherName', 'mlcName', 'mlcLocation', 'logoData', 'updatedAt']);
+
+        allow delete: if isOwner(userId) && isValidId(profileId);
+      }
+
+      // 3. Students Subcollection
+      match /students/{studentId} {
+        allow get: if isOwner(userId) && isValidId(studentId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(studentId) &&
+                         incoming().keys().hasAll(['userId', 'studentCode', 'fullName', 'active', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'studentCode', 'fullName', 'parentName', 'contactNumber', 'active', 'createdAt', 'updatedAt']) &&
+                         isValidStudent(incoming(), userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidId(studentId) &&
+                         isValidStudent(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['studentCode', 'fullName', 'parentName', 'contactNumber', 'active', 'updatedAt']);
+
+        allow delete: if isOwner(userId) && isValidId(studentId);
+      }
+
+      // 4. Attendance Records Subcollection
+      match /attendanceRecords/{recordId} {
+        allow get: if isOwner(userId) && isValidId(recordId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(recordId) &&
+                         incoming().keys().hasAll(['userId', 'studentId', 'studentName', 'dateKey', 'status', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'studentId', 'studentName', 'dateKey', 'status', 'createdAt', 'updatedAt']) &&
+                         isValidAttendanceRecord(incoming(), userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidId(recordId) &&
+                         isValidAttendanceRecord(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().studentId == existing().studentId &&
+                         incoming().dateKey == existing().dateKey &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['studentName', 'status', 'updatedAt']);
+
+        allow delete: if isOwner(userId) && isValidId(recordId);
+      }
+
+      // 5. Fine Records Subcollection
+      match /fineRecords/{fineId} {
+        allow get: if isOwner(userId) && isValidId(fineId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(fineId) &&
+                         incoming().keys().hasAll(['userId', 'studentId', 'studentName', 'attendanceDate', 'amount', 'paidAmount', 'status', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'studentId', 'studentName', 'attendanceDate', 'amount', 'paidAmount', 'status', 'createdAt', 'updatedAt']) &&
+                         isValidFineRecord(incoming(), userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidId(fineId) &&
+                         isValidFineRecord(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().studentId == existing().studentId &&
+                         incoming().attendanceDate == existing().attendanceDate &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['studentName', 'amount', 'paidAmount', 'status', 'updatedAt']);
+
+        allow delete: if isOwner(userId) && isValidId(fineId);
+      }
+
+      // 6. Payment Records Subcollection (Immutable Financial Ledger)
+      match /paymentRecords/{paymentId} {
+        allow get: if isOwner(userId) && isValidId(paymentId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(paymentId) &&
+                         incoming().keys().hasAll(['userId', 'studentId', 'studentName', 'amountPaid', 'remainingAfter', 'paymentDateKey', 'paymentTimeText', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'studentId', 'studentName', 'amountPaid', 'remainingAfter', 'paymentDateKey', 'paymentTimeText', 'note', 'createdAt', 'updatedAt']) &&
+                         isValidPaymentRecord(incoming(), userId);
+
+        allow update: if false;
+        allow delete: if false;
+      }
+
+      // 7. App Settings Subcollection
+      match /appSettings/{settingsId} {
+        allow get: if isOwner(userId) && isValidId(settingsId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(settingsId) &&
+                         incoming().keys().hasAll(['userId', 'languageCode', 'defaultFineAmount', 'sundayHolidayEnabled', 'notificationsEnabled', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'languageCode', 'defaultFineAmount', 'sundayHolidayEnabled', 'notificationsEnabled', 'createdAt', 'updatedAt']) &&
+                         isValidAppSettings(incoming(), userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidId(settingsId) &&
+                         isValidAppSettings(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['languageCode', 'defaultFineAmount', 'sundayHolidayEnabled', 'notificationsEnabled', 'updatedAt']);
+
+        allow delete: if false;
+      }
+    }
+  }
+}

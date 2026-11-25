@@ -1,0 +1,147 @@
+{
+  "entities": {
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Authenticated teacher account credentials and session preferences stored securely with salted PBKDF2 hashes.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID of the teacher." },
+        "username": { "type": "string", "description": "Teacher login username." },
+        "passwordHash": { "type": "string", "description": "Base64 PBKDF2-HMAC-SHA256 password hash." },
+        "passwordSalt": { "type": "string", "description": "Base64 random salt for password hashing." },
+        "recoveryHash": { "type": "string", "description": "Base64 PBKDF2-HMAC-SHA256 recovery code hash." },
+        "recoverySalt": { "type": "string", "description": "Base64 random salt for recovery code hashing." },
+        "rememberMe": { "type": "boolean", "description": "Whether to keep teacher session unlocked across launches." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp when account was created (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp when account was last updated (FieldValue.serverTimestamp())." }
+      },
+      "required": ["userId", "username", "passwordHash", "passwordSalt", "recoveryHash", "recoverySalt", "rememberMe", "createdAt", "updatedAt"]
+    },
+    "MlcProfile": {
+      "title": "MlcProfile",
+      "description": "Micro Learning Centre profile details for a teacher.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "mlcName": { "type": "string" },
+        "mlcLocation": { "type": "string" },
+        "logoData": { "type": "string", "description": "Optional base64 compressed JPEG thumbnail." },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "teacherName", "mlcName", "mlcLocation", "createdAt", "updatedAt"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Student enrolled in the teacher's MLC.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "studentCode": { "type": "string" },
+        "fullName": { "type": "string" },
+        "parentName": { "type": "string" },
+        "contactNumber": { "type": "string" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "studentCode", "fullName", "active", "createdAt", "updatedAt"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "Daily attendance record keyed by dateKey_studentId to prevent duplicates.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "dateKey": { "type": "string", "description": "YYYY-MM-DD local date key." },
+        "status": { "type": "string", "enum": ["PRESENT", "ABSENT"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "studentId", "studentName", "dateKey", "status", "createdAt", "updatedAt"]
+    },
+    "FineRecord": {
+      "title": "FineRecord",
+      "description": "Automatic absent fine record linked 1:1 to a student's absent attendance date.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "attendanceDate": { "type": "string" },
+        "amount": { "type": "integer" },
+        "paidAmount": { "type": "integer" },
+        "status": { "type": "string", "enum": ["UNPAID", "PARTIAL", "PAID", "REVERSED", "CREDIT_ADJUSTED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "studentId", "studentName", "attendanceDate", "amount", "paidAmount", "status", "createdAt", "updatedAt"]
+    },
+    "PaymentRecord": {
+      "title": "PaymentRecord",
+      "description": "Immutable fine payment ledger record.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "amountPaid": { "type": "integer" },
+        "remainingAfter": { "type": "integer" },
+        "paymentDateKey": { "type": "string" },
+        "paymentTimeText": { "type": "string" },
+        "note": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "studentId", "studentName", "amountPaid", "remainingAfter", "paymentDateKey", "paymentTimeText", "createdAt", "updatedAt"]
+    },
+    "AppSettings": {
+      "title": "AppSettings",
+      "description": "Teacher-specific app settings including language, default fine amount, Sunday holiday, and notifications.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "languageCode": { "type": "string", "enum": ["en", "hi"] },
+        "defaultFineAmount": { "type": "integer" },
+        "sundayHolidayEnabled": { "type": "boolean" },
+        "notificationsEnabled": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "languageCode", "defaultFineAmount", "sundayHolidayEnabled", "notificationsEnabled", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserAccount" },
+      "description": "Authenticated teacher account profile and hashed credentials."
+    },
+    "/users/{userId}/mlcProfiles/{profileId}": {
+      "schema": { "$ref": "#/entities/MlcProfile" },
+      "description": "MLC profile details for the authenticated teacher."
+    },
+    "/users/{userId}/students/{studentId}": {
+      "schema": { "$ref": "#/entities/Student" },
+      "description": "Students managed by the authenticated teacher."
+    },
+    "/users/{userId}/attendanceRecords/{recordId}": {
+      "schema": { "$ref": "#/entities/AttendanceRecord" },
+      "description": "Daily attendance records for students."
+    },
+    "/users/{userId}/fineRecords/{fineId}": {
+      "schema": { "$ref": "#/entities/FineRecord" },
+      "description": "Automatic absent fine records linked to attendance dates."
+    },
+    "/users/{userId}/paymentRecords/{paymentId}": {
+      "schema": { "$ref": "#/entities/PaymentRecord" },
+      "description": "Immutable fine payment history ledger."
+    },
+    "/users/{userId}/appSettings/{settingsId}": {
+      "schema": { "$ref": "#/entities/AppSettings" },
+      "description": "Persistent application preferences per teacher."
+    }
+  }
+}
