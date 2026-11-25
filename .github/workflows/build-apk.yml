@@ -19,11 +19,14 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept Android SDK Licenses
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+      - name: Install Android SDK and Accept Licenses
+        run: |
+          mkdir -p "$HOME/android-sdk/cmdline-tools"
+          curl -sSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o /tmp/cmdtools.zip
+          unzip -q /tmp/cmdtools.zip -d "$HOME/android-sdk/cmdline-tools"
+          mv "$HOME/android-sdk/cmdline-tools/cmdline-tools" "$HOME/android-sdk/cmdline-tools/latest"
+          yes | "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$HOME/android-sdk" --licenses > /dev/null
+          "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$HOME/android-sdk" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -38,7 +41,8 @@ jobs:
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
         env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          ANDROID_HOME: /home/runner/android-sdk
+          ANDROID_SDK_ROOT: /home/runner/android-sdk
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
