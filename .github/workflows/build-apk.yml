@@ -54,29 +54,20 @@ jobs:
             echo "=========================================="
           fi
           echo "=========================================="
-          echo "COPY THIS SHA-1 AND ADD TO FIREBASE:"
+          echo "FINAL SHA-1 FINGERPRINT:"
           keytool -list -v -keystore debug.keystore -alias androiddebugkey -storepass android -keypass android | grep -i "SHA1:"
           echo "=========================================="
 
-      - name: Verify Real google-services.json
+      - name: Use Real google-services.json
         run: |
           if [ ! -f app/google-services.json ]; then
-            echo "ERROR: app/google-services.json missing! Upload real file to app/ folder."
+            echo "ERROR: app/google-services.json nahi mili! Kripya real google-services.json file app/ folder mein upload karein."
             exit 1
           fi
+          echo "Using real app/google-services.json file."
 
       - name: Build Debug APK
-        run: |
-          set -o pipefail
-          ./gradlew assembleDebug --console=plain 2>&1 | tee build.log
-          EXIT_CODE=${PIPESTATUS[0]}
-          if [ $EXIT_CODE -ne 0 ]; then
-            echo "=========================================="
-            echo "REAL FAILURE REASON:"
-            grep -n -C 5 -E "What went wrong:|Caused by:|Execution failed for task|e: file:|No matching client found" build.log | tail -n 45
-            echo "=========================================="
-            exit $EXIT_CODE
-          fi
+        run: ./gradlew assembleDebug --stacktrace --console=plain
         env:
           ANDROID_HOME: /home/runner/android-sdk
           ANDROID_SDK_ROOT: /home/runner/android-sdk
