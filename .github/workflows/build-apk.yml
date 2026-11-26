@@ -1,4 +1,4 @@
-name: Build Debug APK
+name: Build Release APK
 
 on:
   workflow_dispatch:
@@ -38,25 +38,87 @@ jobs:
           fi
           chmod +x ./gradlew
 
-      - name: Restore or Generate Debug Keystore + Print SHA-1
+      - name: Restore or Generate Release Keystore + Print SHA-1
         env:
-          DEBUG_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
+          RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
-          if [ -n "$DEBUG_KEYSTORE_B64" ]; then
-            echo "$DEBUG_KEYSTORE_B64" | base64 -d > debug.keystore
-            echo "Restored permanent debug.keystore from GitHub Secret."
+          STORE_PASS="${RELEASE_STORE_PASSWORD:-android123}"
+          KEY_ALIAS="${RELEASE_KEY_ALIAS:-mlcreleasekey}"
+          KEY_PASS="${RELEASE_KEY_PASSWORD:-android123}"
+
+          if [ -n "$RELEASE_KEYSTORE_B64" ]; then
+            echo "$RELEASE_KEYSTORE_B64" | base64 -d > release.keystore
+            echo "Restored release.keystore from GitHub Secret."
           else
-            keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            keytool -genkeypair -v -keystore release.keystore -storepass "$STORE_PASS" -alias "$KEY_ALIAS" -keypass "$KEY_PASS" -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=MLC Management,O=MLC,C=IN"
             echo "=========================================="
-            echo "SAVE THIS BASE64 IN GITHUB SECRET NAMED DEBUG_KEYSTORE_B64:"
-            base64 -w 0 debug.keystore
+            echo "SAVE THIS BASE64 IN GITHUB SECRET NAMED RELEASE_KEYSTORE_B64:"
+            base64 -w 0 release.keystore
             echo ""
+            echo "Store Pass: $STORE_PASS | Alias: $KEY_ALIAS | Key Pass: $KEY_PASS"
             echo "=========================================="
           fi
+
           echo "=========================================="
-          echo "FINAL SHA-1 FINGERPRINT:"
-          keytool -list -v -keystore debug.keystore -alias androiddebugkey -storepass android -keypass android | grep -i "SHA1:"
+          echo "RELEASE SHA-1 FINGERPRINT:"
+          keytool -list -v -keystore release.keystore -alias "$KEY_ALIAS" -storepass "$STORE_PASS" -keypass "$KEY_PASS" | grep -i "SHA1:"
           echo "=========================================="
+
+      - name: Configure Gradle Release Signing
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          STORE_PASS="${RELEASE_STORE_PASSWORD:-android123}"
+          KEY_ALIAS="${RELEASE_KEY_ALIAS:-mlcreleasekey}"
+          KEY_PASS="${RELEASE_KEY_PASSWORD:-android123}"
+          KEYSTORE_PATH="$(pwd)/release.keystore"
+
+          if [ -f app/build.gradle.kts ]; then
+            cat <<EOF >> app/build.gradle.kts
+
+android {
+    signingConfigs {
+        create("release") {
+            storeFile = file("$KEYSTORE_PATH")
+            storePassword = "$STORE_PASS"
+            keyAlias = "$KEY_ALIAS"
+            keyPassword = "$KEY_PASS"
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = false
+        }
+    }
+}
+EOF
+          elif [ -f app/build.gradle ]; then
+            cat <<EOF >> app/build.gradle
+
+android {
+    signingConfigs {
+        release {
+            storeFile file("$KEYSTORE_PATH")
+            storePassword "$STORE_PASS"
+            keyAlias "$KEY_ALIAS"
+            keyPassword "$KEY_PASS"
+        }
+    }
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+        }
+    }
+}
+EOF
+          fi
 
       - name: Use Real google-services.json
         env:
@@ -74,22 +136,22 @@ jobs:
           fi
           echo "Using real app/google-services.json file."
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace --console=plain
+      - name: Build Release APK
+        run: ./gradlew assembleRelease --stacktrace --console=plain
         env:
           ANDROID_HOME: /home/runner/android-sdk
           ANDROID_SDK_ROOT: /home/runner/android-sdk
           GRADLE_OPTS: "-Dorg.gradle.daemon=false -Xmx4096m"
 
-      - name: Collect Built APKs
+      - name: Collect Built Release APKs
         run: |
           mkdir -p built-apks
-          find . -path "*/outputs/apk/debug/*.apk" -exec cp {} built-apks/ \;
+          find . -path "*/outputs/apk/release/*.apk" -exec cp {} built-apks/ \;
           ls -la built-apks
 
-      - name: Upload APK Artifact
+      - name: Upload Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
+          name: app-release-apk
           path: built-apks/*.apk
           
