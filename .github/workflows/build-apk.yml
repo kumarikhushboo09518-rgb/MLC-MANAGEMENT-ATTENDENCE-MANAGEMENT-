@@ -59,9 +59,17 @@ jobs:
           echo "=========================================="
 
       - name: Use Real google-services.json
+        env:
+          GOOGLE_SERVICES_JSON_TEXT: ${{ secrets.GOOGLE_SERVICES_JSON_TEXT }}
         run: |
+          mkdir -p app
+          if [ -n "$GOOGLE_SERVICES_JSON_TEXT" ]; then
+            printf "%s\n" "$GOOGLE_SERVICES_JSON_TEXT" > app/google-services.json
+            echo "Created app/google-services.json from GitHub Secret."
+          fi
+
           if [ ! -f app/google-services.json ]; then
-            echo "ERROR: app/google-services.json nahi mili! Kripya real google-services.json file app/ folder mein upload karein."
+            echo "ERROR: app/google-services.json nahi mili!"
             exit 1
           fi
           echo "Using real app/google-services.json file."
